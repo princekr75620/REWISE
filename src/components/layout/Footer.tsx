@@ -46,7 +46,7 @@ export default function Footer() {
 
       <div className="max-w-7xl mx-auto pt-12 mt-12 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="text-[10px] text-slate-600 font-sans font-bold uppercase tracking-widest">
-          © 2026 ReWise Technologies. Optimized for Circularity.
+          © 2026 ReWise. Developed by Prince Kumar.
         </div>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">

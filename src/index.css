@@ -67,3 +67,40 @@
     display: none;
   }
 }
+
+/* Google Sign-In Material Button Styles */
+.gsi-material-button {
+  background-color: white;
+  background-size: 0px;
+  border: none;
+  border-radius: 12px;
+  box-sizing: border-box;
+  color: #1f1f1f;
+  cursor: pointer;
+  display: inline-block;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  height: auto;
+  letter-spacing: 0.25px;
+  min-width: 90px;
+  outline: none;
+  overflow: hidden;
+  position: relative;
+  text-align: center;
+  transition: background-color .218s, border-color .218s, box-shadow .218s;
+  user-select: none;
+  -webkit-user-select: none;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.gsi-material-button:hover {
+  background-color: #f8fafc;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+}
+
+.gsi-material-button:active {
+  background-color: #f1f5f9;
+}
+

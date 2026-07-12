@@ -11,6 +11,7 @@ import CompanyDashboard from './components/sections/CompanyDashboard';
 import Auth from './components/sections/Auth';
 import Vault from './components/sections/Vault';
 import VoiceAssistant from './components/sections/VoiceAssistant';
+import Subscription from './components/sections/Subscription';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import { cn } from './lib/utils';
@@ -46,6 +47,7 @@ export default function App() {
       case 'studio': return <UpcyclingStudio language={language} />;
       case 'weather': return <WeatherReport language={language} />;
       case 'company': return <CompanyDashboard />;
+      case 'subscription': return <Subscription />;
       case 'vault': return <Vault />;
       case 'auth': return <Auth onSuccess={() => setActiveTab('home')} />;
       case 'login': return <Auth onSuccess={() => setActiveTab('home')} initialMode="login" />;

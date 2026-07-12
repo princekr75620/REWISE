@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, X, Send, Sparkles, BrainCircuit, MessageSquare, Volume2, Command, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { voiceAssistantChat } from '../../services/ai';
+import { canChat, recordChat } from '../../lib/subscription';
 
 import { Language } from '../ui/LanguageSelector';
 import { useTranslation } from '../../lib/translations';
@@ -99,6 +100,10 @@ export default function VoiceAssistant({ onCommand, language }: VoiceAssistantPr
       onCommand?.('studio');
       addAssistantMessage('Opening Design Studio.');
       return;
+    } else if (command.includes('gmail') || command.includes('inbox') || command.includes('mail') || command.includes('email')) {
+      onCommand?.('gmail');
+      addAssistantMessage('Opening Gmail Communication Hub.');
+      return;
     } else if (
       command.includes('weather') || 
       command.includes('climate') || 
@@ -115,12 +120,26 @@ export default function VoiceAssistant({ onCommand, language }: VoiceAssistantPr
     }
 
     // If not a navigation command, use Gemini
+    if (!canChat()) {
+      let limitMsg = '⚠️ AI Session Quota reached. Your Free Tier allowance of 5 messages is fully exhausted. Please upgrade to the Basic Orbit (₹50) or Star Voyager (₹300/yr) plan inside the "Company -> Membership & Billing" page for unlimited assistant access.';
+      if (language === 'hindi') {
+        limitMsg = '⚠️ चैट सीमा समाप्त! आपकी निःशुल्क 5 संदेशों की कोटा सीमा पूरी हो चुकी है। कृपया असीमित बातचीत के लिए "Company -> Membership & Billing" में जाकर अपनी सदस्यता अपग्रेड करें।';
+      } else if (language === 'haryanvi') {
+        limitMsg = '⚠️ फ्री चैट लिमिट खत्म हो ली! थारे 5 फ्री संदेश पूरे हो गए सैं। असीमित चैट खातर "Company -> Membership & Billing" कूट पै जाकै अपग्रेड कर लो।';
+      } else if (language === 'punjabi') {
+        limitMsg = '⚠️ ਚੈਟ ਸੀਮਾ ਖ਼ਤਮ! ਤੁਹਾਡੀ ਮੁਫ਼ਤ 5 ਸੁਨੇਹਿਆਂ ਦੀ ਸੀਮਾ ਪੂਰੀ ਹੋ ਚੁੱਕੀ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਅਣਲਿਮਟਿਡ ਚੈਟ ਲਈ "Company -> Membership & Billing" ਵਿੱਚ ਜਾ ਕੇ ਆਪਣੀ ਮੈਂਬਰਸ਼ਿਪ ਨੂੰ ਅਪਗ੍ਰੇਡ ਕਰੋ।';
+      }
+      addAssistantMessage(limitMsg);
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const langPrompt = language === 'hindi' ? 'Respond in Hindi.' : language === 'haryanvi' ? 'Respond in Haryanvi (using Devanagari script).' : language === 'punjabi' ? 'Respond in Punjabi.' : 'Respond in English.';
       const response = await voiceAssistantChat(`${text}. ${langPrompt}`);
       if (response) {
         addAssistantMessage(response);
+        await recordChat();
       }
     } catch (error) {
       addAssistantMessage(language === 'hindi' ? 'क्षमा करें, मेरा संपर्क अभी अस्थिर है।' : 'Sorry, my neural links are currently unstable.');

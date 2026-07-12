@@ -6,6 +6,7 @@ import { analyzeWaste, generateMoreReuseIdeas, analyzeCode, analyzeCodeImage } f
 import { cn } from '../../lib/utils';
 import confetti from 'canvas-confetti';
 import jsQR from 'jsqr';
+import { canScan, recordScan } from '../../lib/subscription';
 
 interface ScanResult {
   itemName: string;
@@ -201,6 +202,12 @@ export default function Scanner({ language }: ScannerProps) {
   };
 
   const handleCodeDetected = async (scannedText: string) => {
+    if (!canScan()) {
+      setError("⚠️ Visual Scanner limit reached! Your Free Tier is capped at 5 image scans. Please upgrade to the Basic Orbit (₹50) or Star Voyager (1 year) plan in the 'Company' section under 'Membership & Billing' to unlock unlimited visual image parsing.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     setSelectedIdea(null);
@@ -210,6 +217,7 @@ export default function Scanner({ language }: ScannerProps) {
     try {
       const data = await analyzeCode(scannedText, language);
       setResult(data as ScanResult);
+      await recordScan();
       confetti({
         particleCount: 100,
         spread: 70,
@@ -262,6 +270,12 @@ export default function Scanner({ language }: ScannerProps) {
   };
 
   const processImage = async (imgData: string, mimeType: string) => {
+    if (!canScan()) {
+      setError("⚠️ Visual Scanner limit reached! Your Free Tier is capped at 5 image scans. Please upgrade to the Basic Orbit (₹50) or Star Voyager (1 year) plan in the 'Company' section under 'Membership & Billing' to unlock unlimited visual image parsing.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     setSelectedIdea(null);
@@ -274,6 +288,7 @@ export default function Scanner({ language }: ScannerProps) {
           setCodeResult(decoded);
           const data = await analyzeCode(decoded, language);
           setResult(data as ScanResult);
+          await recordScan();
           confetti({
             particleCount: 100,
             spread: 70,
@@ -285,6 +300,7 @@ export default function Scanner({ language }: ScannerProps) {
           const data = await analyzeCodeImage(imgData, mimeType, language);
           setCodeResult(data.itemName || "Identified Product");
           setResult(data as ScanResult);
+          await recordScan();
           confetti({
             particleCount: 100,
             spread: 70,
@@ -295,6 +311,7 @@ export default function Scanner({ language }: ScannerProps) {
       } else {
         const data = await analyzeWaste(imgData, mimeType, language);
         setResult(data as ScanResult);
+        await recordScan();
         confetti({
           particleCount: 100,
           spread: 70,

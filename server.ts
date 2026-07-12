@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -109,6 +110,56 @@ async function startServer() {
   // JSON body parser for API requests
   app.use(express.json({ limit: '10mb' }));
 
+  // Contact Form Submission API
+  app.post("/api/contact", (req, res) => {
+    try {
+      const { name, email, phone, message } = req.body;
+      if (!name || !email || !message) {
+        return res.status(400).json({ error: "Missing required fields: Name, Email, and Message are required." });
+      }
+
+      const submission = {
+        id: "submission_" + Date.now(),
+        name,
+        email,
+        phone: phone || "Not Provided",
+        message,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log("=========================================");
+      console.log("🆕 NEW CONTACT SUBMISSION RECEIVED FROM USER:");
+      console.log(`👤 Name:      ${submission.name}`);
+      console.log(`✉️ Email:     ${submission.email}`);
+      console.log(`📞 Phone:     ${submission.phone}`);
+      console.log(`💬 Message:   ${submission.message}`);
+      console.log("=========================================");
+
+      // Persist to contact_submissions.json in workspace root
+      const submissionsPath = path.join(process.cwd(), "contact_submissions.json");
+      let submissions = [];
+      try {
+        if (fs.existsSync(submissionsPath)) {
+          const rawData = fs.readFileSync(submissionsPath, "utf-8");
+          submissions = JSON.parse(rawData);
+        }
+        submissions.push(submission);
+        fs.writeFileSync(submissionsPath, JSON.stringify(submissions, null, 2), "utf-8");
+      } catch (fsErr) {
+        console.error("Error writing to contact_submissions.json:", fsErr);
+      }
+
+      res.status(200).json({ 
+        success: true, 
+        message: "Your message has been secure-routed directly to Prince Kumar. Thank you!",
+        submission 
+      });
+    } catch (err: any) {
+      console.error("Error in contact submission endpoint:", err);
+      res.status(500).json({ error: "Internal Server Error in Core Comms Hub." });
+    }
+  });
+
   const getGenAI = () => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) throw new Error("Gemini API Key is not configured. Please check your environment variables in AI Studio dashboard.");
@@ -159,15 +210,17 @@ async function startServer() {
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: [
-          {
-            inlineData: {
-              data: imageData,
-              mimeType: mimeType
-            }
-          },
-          { text: prompt }
-        ],
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: imageData,
+                mimeType: mimeType
+              }
+            },
+            { text: prompt }
+          ]
+        },
         config: {
           responseMimeType: "application/json"
         }
@@ -308,15 +361,17 @@ async function startServer() {
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: [
-          {
-            inlineData: {
-              data: imageData,
-              mimeType: mimeType
-            }
-          },
-          { text: prompt }
-        ],
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: imageData,
+                mimeType: mimeType
+              }
+            },
+            { text: prompt }
+          ]
+        },
         config: {
           responseMimeType: "application/json"
         }

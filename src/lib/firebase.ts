@@ -1,132 +1,153 @@
-/**
- * Mock Firebase implementation to maintain app functionality 
- * after the user declined Firebase setup.
- */
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInWithPopup as fbSignInWithPopup, 
+  signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
+  createUserWithEmailAndPassword as fbCreateUserWithEmailAndPassword,
+  signOut as fbSignOut,
+  onAuthStateChanged as fbOnAuthStateChanged,
+  updateProfile as fbUpdateProfile,
+  GoogleAuthProvider
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  orderBy, 
+  serverTimestamp 
+} from 'firebase/firestore';
 
-const listeners: Set<(user: any) => void> = new Set();
-
-const notifyListeners = (user: any) => {
-  listeners.forEach(cb => cb(user));
+// Hardcoded safe configuration provisioned specifically for this applet
+const firebaseConfig = {
+  projectId: "moonlit-window-fcf5x",
+  appId: "1:1083467124303:web:efbe70ea99de8b09c9243a",
+  apiKey: "AIzaSyBQqtz3udcwucf6k0370ZeyREgtg61847M",
+  authDomain: "moonlit-window-fcf5x.firebaseapp.com",
+  storageBucket: "moonlit-window-fcf5x.firebasestorage.app",
+  messagingSenderId: "1083467124303",
+  measurementId: ""
 };
 
-export const auth = {
-  currentUser: (() => {
-    const storedUser = localStorage.getItem('rewise_user');
-    return storedUser ? JSON.parse(storedUser) : null;
-  })(),
-  onAuthStateChanged: (arg1: any, arg2?: any) => {
-    const callback = typeof arg1 === 'function' ? arg1 : arg2;
-    if (typeof callback === 'function') {
-      listeners.add(callback);
-      callback(auth.currentUser);
-    }
-    return () => {
-      if (typeof callback === 'function') {
-        listeners.delete(callback);
-      }
-    };
-  },
+const databaseId = "ai-studio-b4cd212d-347b-4bfe-825c-5fe8405d193c";
+
+// Initialize Firebase App
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
+
+// Initialize Auth & Firestore
+export const auth = getAuth(app);
+export const db = getFirestore(app, databaseId);
+
+// Export Auth Providers
+export { GoogleAuthProvider };
+
+// Helper function to sign wrap Auth Profile updates
+export const updateProfile = async (user: any, profile: { displayName?: string; photoURL?: string }) => {
+  return fbUpdateProfile(user, profile);
 };
 
-export const db = {}; // Mock db
-
-export const signInWithPopup = async (_auth: any, _provider: any) => {
-  const mockUser = {
-    uid: 'mock-user-123',
-    displayName: 'ReWise User',
-    email: 'user@example.com',
-    photoURL: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=ReWise',
-  };
-  auth.currentUser = mockUser;
-  localStorage.setItem('rewise_user', JSON.stringify(mockUser));
-  notifyListeners(mockUser);
-  return { user: mockUser };
-};
-
-export const signInWithEmailAndPassword = async (_auth: any, email: string, pass: string) => {
-  const usersJson = localStorage.getItem('rewise_users_db');
-  const users = usersJson ? JSON.parse(usersJson) : [];
-  
-  const user = users.find((u: any) => u.email === email && u.password === pass);
-  
-  if (!user) {
-    throw new Error('User not registered or invalid credentials.');
-  }
-
-  const authenticatedUser = { 
-    uid: user.uid, 
-    email: user.email, 
-    displayName: user.displayName || user.email.split('@')[0] 
-  };
-  
-  auth.currentUser = authenticatedUser;
-  localStorage.setItem('rewise_user', JSON.stringify(authenticatedUser));
-  notifyListeners(authenticatedUser);
-  return { user: authenticatedUser };
-};
-
-export const createUserWithEmailAndPassword = async (_auth: any, email: string, pass: string) => {
-  const usersJson = localStorage.getItem('rewise_users_db');
-  const users = usersJson ? JSON.parse(usersJson) : [];
-  
-  if (users.find((u: any) => u.email === email)) {
-    throw new Error('User already exists. Please login.');
-  }
-
-  const newUser = { 
-    uid: 'mock-' + Date.now(), 
-    email, 
-    password: pass,
-    displayName: email.split('@')[0] 
-  };
-  
-  users.push(newUser);
-  localStorage.setItem('rewise_users_db', JSON.stringify(users));
-
-  const authenticatedUser = { 
-    uid: newUser.uid, 
-    email: newUser.email, 
-    displayName: newUser.displayName 
-  };
-  
-  auth.currentUser = authenticatedUser;
-  localStorage.setItem('rewise_user', JSON.stringify(authenticatedUser));
-  notifyListeners(authenticatedUser);
-  return { user: authenticatedUser };
-};
-
-export const updateProfile = async (targetUser: any, profile: any) => {
-  // Update currently logged in user
-  const stored = localStorage.getItem('rewise_user');
-  if (stored) {
-    const user = JSON.parse(stored);
-    user.displayName = profile.displayName;
-    auth.currentUser = user;
-    localStorage.setItem('rewise_user', JSON.stringify(user));
-    
-    // Also update in the "DB"
-    const usersJson = localStorage.getItem('rewise_users_db');
-    if (usersJson) {
-      const users = JSON.parse(usersJson);
-      const dbUserIndex = users.findIndex((u: any) => u.uid === user.uid);
-      if (dbUserIndex !== -1) {
-        users[dbUserIndex].displayName = profile.displayName;
-        localStorage.setItem('rewise_users_db', JSON.stringify(users));
-      }
-    }
-    
-    notifyListeners(user);
-  }
-};
-
-export const signOut = async (_auth: any) => {
-  auth.currentUser = null;
-  localStorage.removeItem('rewise_user');
-  notifyListeners(null);
-};
-
-export const GoogleAuthProvider = class {};
-
+// Authentication state listeners wrapper
 export const onAuthStateChanged = (authInstance: any, callback: any) => {
-  return auth.onAuthStateChanged(authInstance, callback);
+  return fbOnAuthStateChanged(authInstance, callback);
 };
+
+// Sign in with Email/Password
+export const signInWithEmailAndPassword = async (authInstance: any, email: string, pass: string) => {
+  const creds = await fbSignInWithEmailAndPassword(authInstance, email, pass);
+  // Keep syncing a local cache of user for other parts of the app
+  try {
+    localStorage.setItem('rewise_user', JSON.stringify({
+      uid: creds.user.uid,
+      email: creds.user.email,
+      displayName: creds.user.displayName
+    }));
+  } catch (err) {
+    console.error("Local caching sync err:", err);
+  }
+  return creds;
+};
+
+// Create User with Email/Password
+export const createUserWithEmailAndPassword = async (authInstance: any, email: string, pass: string) => {
+  const creds = await fbCreateUserWithEmailAndPassword(authInstance, email, pass);
+  try {
+    localStorage.setItem('rewise_user', JSON.stringify({
+      uid: creds.user.uid,
+      email: creds.user.email,
+      displayName: creds.user.displayName
+    }));
+  } catch (err) {
+    console.error("Local caching sync err:", err);
+  }
+  return creds;
+};
+
+// Sign In with Popup (Google)
+export const signInWithPopup = async (authInstance: any, provider: any) => {
+  const creds = await fbSignInWithPopup(authInstance, provider);
+  try {
+    localStorage.setItem('rewise_user', JSON.stringify({
+      uid: creds.user.uid,
+      email: creds.user.email,
+      displayName: creds.user.displayName,
+      photoURL: creds.user.photoURL
+    }));
+  } catch (err) {
+    console.error("Local caching sync err:", err);
+  }
+  return creds;
+};
+
+// Sign Out
+export const signOut = async (authInstance: any) => {
+  await fbSignOut(authInstance);
+  try {
+    localStorage.removeItem('rewise_user');
+  } catch (err) {
+    console.error("Local caching clear err:", err);
+  }
+};
+
+// Core Firestore Database Transmission Actions
+export async function submitContactMessage(payload: { name: string; email: string; phone?: string; message: string }) {
+  try {
+    // 1. Submit to real Firebase Firestore collection "messages" as requested
+    const messagesCol = collection(db, 'messages');
+    const docRef = await addDoc(messagesCol, {
+      ...payload,
+      phone: payload.phone || "Not Provided",
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString()
+    });
+    
+    return docRef.id;
+  } catch (error: any) {
+    console.error("Firestore message write failed:", error);
+    throw error;
+  }
+}
+
+export async function fetchContactMessages(): Promise<any[]> {
+  try {
+    const messagesCol = collection(db, 'messages');
+    // Try to query messages, falling back gracefully if no index is yet built
+    try {
+      const q = query(messagesCol, orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn("Ordered fetch failed, doing simple fetch:", e);
+      const snapshot = await getDocs(messagesCol);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+  } catch (error) {
+    console.error("Firestore messages fetch failed:", error);
+    return [];
+  }
+}

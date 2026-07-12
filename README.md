@@ -1,53 +1,12 @@
-# ♻️ WasteSage AI – Smart Waste Management Platform
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-An AI-powered smart waste management platform built by reusing and modifying the original **WasteSage** concept into a modern intelligent solution.  
-The project focuses on automation, sustainability, and efficient waste monitoring using modern web technologies and AI integration.
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-# 🚀 Features
-
-- 🤖 AI-powered waste classification
-- ♻️ Smart recycling recommendations
-- 📊 Real-time waste monitoring dashboard
-- 🎨 Modern responsive UI
-- ⚡ Fast and scalable architecture
-- 🔒 Secure API integration
-- 🧩 Reusable component-based structure
-- 🌍 Eco-friendly smart management system
-
----
-
-# 🧠 Tech Stack
-
-## Frontend
-- **TypeScript**
-- **JavaScript**
-- **Tailwind CSS**
-- **Cosmic CSS**
-
-## Backend & AI
-- AI-powered automation workflows
-- Gemini API integration
-- Modular scalable architecture
-
----
-
-# 📁 Project Structure
-
-```txt
-├── src/
-│   ├── components/      # Reusable UI components
-│   ├── pages/           # Application pages
-│   ├── styles/          # Tailwind & custom styles
-│   ├── utils/           # Utility functions
-│   ├── ai/              # AI integrations & logic
-│   └── main.ts          # Main entry point
-│
-├── public/              # Static assets
-├── tailwind.config.js   # Tailwind configuration
-├── tsconfig.json        # TypeScript configuration
-└── package.json         # Project dependencies
+View your app in AI Studio: https://ai.studio/apps/b4cd212d-347b-4bfe-825c-5fe8405d193c
 
 ## Run Locally
 

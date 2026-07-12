@@ -1,15 +1,12 @@
 {
   "name": "Remix: Remix: ReWise",
-  "description": "A futuristic AI-powered sustainability platform transforming waste into reusable resources using smart scanning and circular economy insights.",
+  "description": "A futuristic AI-powered sustainability platform developed by Prince Kumar, transforming waste into reusable resources using smart scanning and circular economy insights.",
   "requestFramePermissions": [
     "camera",
     "microphone",
     "geolocation"
   ],
   "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
-    "AI Waste Scanning",
-    "3D Visualization",
-    "Voice Assistance"
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

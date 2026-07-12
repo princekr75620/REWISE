@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Leaf, Scan, Zap, CloudSun, Sparkles, User, LogOut, Languages, Bookmark, LayoutGrid } from 'lucide-react';
+import { Leaf, Scan, Zap, CloudSun, Sparkles, User, LogOut, Languages, Bookmark, LayoutGrid, Mail, CreditCard } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { LanguageSelector, Language } from '../ui/LanguageSelector';
 import { useTranslation } from '../../lib/translations';
+import { subscribeToSubscription, getSubscriptionState } from '../../lib/subscription';
 
 interface NavbarProps {
   activeTab: string;
@@ -17,6 +18,14 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, setActiveTab, isLoggedIn, user, onLogout, language, onLanguageChange }: NavbarProps) {
   const t = useTranslation(language);
+  const [subscription, setSubscription] = React.useState(getSubscriptionState());
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeToSubscription((sub) => {
+      setSubscription(sub);
+    });
+    return () => unsubscribe();
+  }, []);
   
   const navItems = [
     { id: 'home', label: t.nav.home, icon: Leaf },
@@ -24,6 +33,7 @@ export default function Navbar({ activeTab, setActiveTab, isLoggedIn, user, onLo
     { id: 'generator', label: t.nav.generator, icon: Zap },
     { id: 'studio', label: t.nav.studio, icon: Sparkles },
     { id: 'vault', label: 'Vault', icon: Bookmark },
+    { id: 'subscription', label: 'Membership', icon: CreditCard },
     { id: 'company', label: 'Company', icon: LayoutGrid },
     { id: 'weather', label: t.nav.weather, icon: CloudSun },
   ];
@@ -64,6 +74,22 @@ export default function Navbar({ activeTab, setActiveTab, isLoggedIn, user, onLo
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Tier badge for guests or logged in users */}
+        <div 
+          onClick={() => setActiveTab('company')}
+          className={cn(
+            "hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full border cursor-pointer hover:bg-white/10 hover:scale-105 active:scale-95 transition-all",
+            subscription.tier === 'free' ? "bg-amber-500/5 text-amber-400 border-amber-500/20" :
+            subscription.tier === 'rupees_50' ? "bg-cyan-500/5 text-cyan-400 border-cyan-400/20 shadow-[0_0_15px_rgba(6,182,212,0.1)]" :
+            "bg-emerald-500/5 text-emerald-400 border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] animate-pulse"
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span className="text-[9px] font-mono font-bold uppercase tracking-wider">
+            {subscription.tier === 'free' ? 'Sandbox Mode' : subscription.tier === 'rupees_50' ? 'Orbit Premium' : 'Voyager Annual'}
+          </span>
+        </div>
+
         <LanguageSelector currentLanguage={language} onLanguageChange={onLanguageChange} />
         {isLoggedIn ? (
           <div className="flex items-center gap-4">

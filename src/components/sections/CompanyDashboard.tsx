@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Info, Eye, Shield, Mail, ArrowRight, ChevronRight, LayoutGrid } from 'lucide-react';
+import { Info, Eye, Shield, ChevronRight, LayoutGrid, Mail } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import About from './About';
 import Vision from './Vision';
