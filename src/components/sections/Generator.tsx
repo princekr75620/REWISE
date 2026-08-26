@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lightbulb, Send, Mic, Copy, Download, Share2, Sparkles, Wand2, Zap, BrainCircuit, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Lightbulb, Send, Mic, Copy, Download, Share2, Sparkles, Wand2, Zap, BrainCircuit, AlertCircle, ArrowLeft, ArrowRight, Compass, Layers, Bookmark } from 'lucide-react';
 import { HoloCard } from '../ui/HoloCard';
 import { generateReuseIdeas } from '../../services/ai';
 import { cn } from '../../lib/utils';
+import { BlueprintSchematicModal } from '../ui/BlueprintSchematicModal';
+import { BlueprintItem } from '../../types';
 
 import { Language } from '../ui/LanguageSelector';
 import { useTranslation } from '../../lib/translations';
@@ -19,6 +21,7 @@ export default function Generator({ language }: GeneratorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIdeaIdx, setSelectedIdeaIdx] = useState<number | null>(null);
+  const [activeBlueprintModal, setActiveBlueprintModal] = useState<BlueprintItem | null>(null);
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
@@ -162,17 +165,41 @@ export default function Generator({ language }: GeneratorProps) {
                       <p className="text-sm text-slate-400 font-sans italic leading-relaxed pt-2 border-l border-white/10 pl-4 line-clamp-3">"{item.process}"</p>
                     </div>
                     
-                    <div className="mt-12 pt-6 flex items-center justify-between border-t border-white/5">
-                      <span className="text-[10px] font-sans font-bold text-emerald-400 uppercase tracking-widest">{item.impact}</span>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIdeaIdx(idx);
-                        }}
-                        className="text-[11px] font-sans font-bold text-emerald-400 hover:text-white flex items-center gap-2 transition-all uppercase tracking-widest group/btn cursor-pointer"
-                      >
-                        View Details <ArrowRight className="w-4 h-4 text-emerald-500 group-hover/btn:translate-x-1 transition-transform" />
-                      </button>
+                    <div className="mt-8 pt-6 flex items-center justify-between border-t border-white/5 gap-2">
+                      <span className="text-[10px] font-sans font-bold text-emerald-400 uppercase tracking-widest truncate">{item.impact}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveBlueprintModal({
+                              title: item.idea,
+                              originalMaterial: input || "Upcycled Raw Material",
+                              concept: item.process,
+                              difficulty: item.difficulty || "Medium",
+                              estimatedCost: item.estimatedCost || "₹50 - ₹150",
+                              materials: item.materialsNeeded || ["Core Medium", "Fixatives", "Hardware"],
+                              steps: item.steps || ["Disassemble and cleanse", "Cut to geometric specs", "Affix structural components"],
+                              impact: item.impact || "Zero Waste Certified",
+                              videoTutorialTarget: item.videoTutorialTarget,
+                              vibe: "Generative Blueprint Synthesis"
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Compass className="w-3 h-3 text-cyan-400" />
+                          <span>Blueprint</span>
+                        </button>
+
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedIdeaIdx(idx);
+                          }}
+                          className="text-[11px] font-sans font-bold text-emerald-400 hover:text-white flex items-center gap-1.5 transition-all uppercase tracking-widest group/btn cursor-pointer"
+                        >
+                          <span>Details</span> <ArrowRight className="w-3.5 h-3.5 text-emerald-500 group-hover/btn:translate-x-1 transition-transform" />
+                        </button>
+                      </div>
                     </div>
                   </HoloCard>
                 </motion.div>
@@ -272,32 +299,66 @@ export default function Generator({ language }: GeneratorProps) {
                 </div>
 
                 {/* Actions Footer */}
-                <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-                  <a 
-                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
-                      ideas[selectedIdeaIdx].videoTutorialTarget || `how to upcycle make ${ideas[selectedIdeaIdx].idea}`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full sm:w-auto px-6 py-4 rounded-xl bg-red-600/10 border border-red-500/30 text-red-400 font-sans font-bold text-sm tracking-wide hover:bg-red-600 hover:text-white transition-all duration-300 flex items-center justify-center gap-3 shadow-lg shadow-red-600/10"
-                  >
-                    <Sparkles className="w-5 h-5 animate-pulse" />
-                    Watch YouTube Blueprint
-                  </a>
-
-                  <button 
+                <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <button
                     onClick={() => {
-                      const textToCopy = `Upcycling Concept: ${ideas[selectedIdeaIdx].idea}\n\nDescription: ${ideas[selectedIdeaIdx].process}\n\nMaterials Needed:\n${(ideas[selectedIdeaIdx].materialsNeeded || ["Original item"]).map((m: string) => `- ${m}`).join('\n')}\n\nSteps:\n${(ideas[selectedIdeaIdx].steps || ["Assemble safely"]).map((s: string, idx: number) => `${idx + 1}. ${s}`).join('\n')}`;
-                      navigator.clipboard.writeText(textToCopy);
+                      const cur = ideas[selectedIdeaIdx];
+                      setActiveBlueprintModal({
+                        title: cur.idea,
+                        originalMaterial: input || "Upcycled Raw Material",
+                        concept: cur.process,
+                        difficulty: cur.difficulty || "Medium",
+                        estimatedCost: cur.estimatedCost || "₹50 - ₹150",
+                        materials: cur.materialsNeeded || ["Core Medium", "Fixatives", "Hardware"],
+                        steps: cur.steps || ["Disassemble and cleanse", "Cut to geometric specs", "Affix structural components"],
+                        impact: cur.impact || "Zero Waste Certified",
+                        videoTutorialTarget: cur.videoTutorialTarget,
+                        vibe: "Generative Blueprint Synthesis"
+                      });
                     }}
-                    className="w-full sm:w-auto px-6 py-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-sans font-bold text-sm tracking-wide hover:bg-emerald-500 hover:text-white transition-all duration-300 flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-6 py-4 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-mono font-bold text-xs uppercase tracking-wider hover:bg-cyan-500/25 transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/10"
                   >
-                    <Copy className="w-4 h-4" /> Copy Blueprint Instructions
+                    <Compass className="w-4 h-4 text-cyan-400" />
+                    <span>📐 Open Technical CAD Blueprint</span>
                   </button>
+
+                  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                    <a 
+                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                        ideas[selectedIdeaIdx].videoTutorialTarget || `how to upcycle make ${ideas[selectedIdeaIdx].idea}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 sm:flex-initial px-5 py-4 rounded-xl bg-red-600/10 border border-red-500/30 text-red-400 font-sans font-bold text-xs tracking-wide hover:bg-red-600 hover:text-white transition-all duration-300 flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Watch Video
+                    </a>
+
+                    <button 
+                      onClick={() => {
+                        const textToCopy = `Upcycling Concept: ${ideas[selectedIdeaIdx].idea}\n\nDescription: ${ideas[selectedIdeaIdx].process}\n\nMaterials Needed:\n${(ideas[selectedIdeaIdx].materialsNeeded || ["Original item"]).map((m: string) => `- ${m}`).join('\n')}\n\nSteps:\n${(ideas[selectedIdeaIdx].steps || ["Assemble safely"]).map((s: string, idx: number) => `${idx + 1}. ${s}`).join('\n')}`;
+                        navigator.clipboard.writeText(textToCopy);
+                      }}
+                      className="flex-1 sm:flex-initial px-5 py-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-sans font-bold text-xs tracking-wide hover:bg-emerald-500 hover:text-white transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Copy className="w-4 h-4" /> Copy Specs
+                    </button>
+                  </div>
                 </div>
               </HoloCard>
             </motion.div>
           )
+        )}
+      </AnimatePresence>
+
+      {/* Blueprint CAD Schematic Modal */}
+      <AnimatePresence>
+        {activeBlueprintModal && (
+          <BlueprintSchematicModal
+            blueprint={activeBlueprintModal}
+            onClose={() => setActiveBlueprintModal(null)}
+          />
         )}
       </AnimatePresence>
 

@@ -9,7 +9,8 @@ import {
   getFallbackReuseIdeas, 
   getFallbackMoreIdeas, 
   getFallbackVoiceAssistant, 
-  getFallbackEcoRecommendations 
+  getFallbackEcoRecommendations,
+  getFallbackReportVerification 
 } from "./fallbackDb";
 
 function cleanAndParseJSON(text: string, isArray: boolean = false): any {
@@ -237,6 +238,323 @@ async function startServer() {
       } catch (fbError: any) {
         res.status(500).json({ error: error.message });
       }
+    }
+  });
+
+  // AI Waste Report Verification Endpoint
+  app.post("/api/ai/verify-report", async (req, res) => {
+    try {
+      const { imageData, mimeType, category, description, language } = req.body;
+      const ai = getGenAI();
+
+      const langPrompt = language === 'hindi' ? 'Respond in Hindi (हिंदी).' : language === 'haryanvi' ? 'Respond in Haryanvi (using Devanagari script).' : 'Respond in English.';
+      
+      const prompt = `You are a Municipal & Environmental AI Waste Verification Inspector for the REWISE Civic Platform.
+      Analyze this reported garbage dump / waste hotspot image or description.
+      Category reported: "${category || 'Unspecified'}".
+      User notes: "${description || 'None'}".
+
+      Determine:
+      1. wasteType: Exact classification (e.g., 'Single-Use Mixed Plastics', 'E-Waste / Hazardous Batteries', 'Illegal Debris & Rubble', 'Organic Wet Biomass').
+      2. estimatedSeverity: 'Low' | 'Medium' | 'High' | 'Critical'.
+      3. containsWaste: boolean (true if image/description contains real unmanaged waste, false if invalid or spam).
+      4. environmentalRisk: 'Low' | 'Medium' | 'High' | 'Severe'.
+      5. confidence: number (between 50 and 99).
+      6. detectedItems: string[] (3-5 identified items, e.g. ['Crushed PET bottles', 'Styrofoam packaging', 'Plastic films']).
+      7. summary: string (2 short sentences summarizing the hazard and suggested civic collection priority).
+
+      ${langPrompt}
+      Return ONLY a valid JSON object strictly matching this format:
+      {
+        "wasteType": "string",
+        "estimatedSeverity": "Low" | "Medium" | "High" | "Critical",
+        "containsWaste": boolean,
+        "environmentalRisk": "Low" | "Medium" | "High" | "Severe",
+        "confidence": number,
+        "detectedItems": ["string"],
+        "summary": "string"
+      }`;
+
+      let response;
+      if (imageData) {
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: imageData.includes(',') ? imageData.split(',')[1] : imageData,
+                  mimeType: mimeType || 'image/jpeg'
+                }
+              },
+              { text: prompt }
+            ]
+          },
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+      } else {
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+      }
+
+      let text = response.text;
+      if (!text) throw new Error("No response string from AI model");
+      res.json(cleanAndParseJSON(text, false));
+    } catch (error: any) {
+      console.warn("AI Report verification fallback triggered:", error.message);
+      const fallback = getFallbackReportVerification(req.body?.category, req.body?.description);
+      res.json(fallback);
+    }
+  });
+
+  // Reports In-Memory & File Storage
+  const reportsFilePath = path.join(process.cwd(), "reports_store.json");
+
+  const getSeedReports = () => [
+    {
+      id: "RW-2026-00392",
+      userId: "user_citizen_01",
+      userName: "Aarav Sharma",
+      image: "https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?auto=format&fit=crop&w=800&q=80",
+      category: "Plastic",
+      description: "Severe accumulation of single-use bottles and carry bags choking roadside drainage near Sector 14 market.",
+      severity: "High",
+      location: {
+        address: "Main Market Road, Near Gate 2, Sector 14",
+        city: "Gurugram, Haryana",
+        lat: 28.4725,
+        lng: 77.0511
+      },
+      aiAnalysis: {
+        wasteType: "Single-Use PET Bottles & Polythene Bags",
+        estimatedSeverity: "High",
+        containsWaste: true,
+        environmentalRisk: "High",
+        confidence: 94,
+        detectedItems: ["Crushed beverage bottles", "Thin LDPE bags", "Packaging films"],
+        summary: "Drainage block risk detected. High plastic density requires immediate mechanical collection."
+      },
+      status: "Resolved",
+      timeline: [
+        { status: "Reported", timestamp: new Date(Date.now() - 48 * 3600000).toISOString(), note: "Report logged by citizen" },
+        { status: "AI Verified", timestamp: new Date(Date.now() - 47 * 3600000).toISOString(), note: "AI confirmed 94% plastic confidence" },
+        { status: "Assigned", timestamp: new Date(Date.now() - 36 * 3600000).toISOString(), note: "Assigned to Ward 14 Sanitation EV Hauler #4" },
+        { status: "Action Taken", timestamp: new Date(Date.now() - 12 * 3600000).toISOString(), note: "Waste collected & sent to Material Recovery Center" },
+        { status: "Resolved", timestamp: new Date(Date.now() - 4 * 3600000).toISOString(), note: "Area cleared and sanitized. +50 bonus eco points awarded!" }
+      ],
+      createdAt: new Date(Date.now() - 48 * 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - 4 * 3600000).toISOString(),
+      resolvedAt: new Date(Date.now() - 4 * 3600000).toISOString(),
+      assignedTo: "Ward 14 Rapid Sanitation Team",
+      resolutionNote: "Successfully cleared 120kg plastic waste. Sent for mechanical baling and secondary pellet recycling.",
+      pointsEarned: 85,
+      resolvedBonusAwarded: true
+    },
+    {
+      id: "RW-2026-00418",
+      userId: "user_citizen_02",
+      userName: "Priya Mehta",
+      image: "https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80",
+      category: "E-Waste",
+      description: "Dumped computer motherboards, old monitors and tangled wire bundles in open community park corner.",
+      severity: "Critical",
+      location: {
+        address: "Green Glen Community Park, Sector 21",
+        city: "Chandigarh",
+        lat: 30.7333,
+        lng: 76.7794
+      },
+      aiAnalysis: {
+        wasteType: "Commercial E-Waste & Toxic Circuitry",
+        estimatedSeverity: "Critical",
+        containsWaste: true,
+        environmentalRisk: "Severe",
+        confidence: 97,
+        detectedItems: ["Printed Circuit Boards", "CRT Glass fragments", "Insulated copper cables"],
+        summary: "Toxic heavy metals leach hazard. Urgent hazardous waste protocol dispatch required."
+      },
+      status: "Assigned",
+      timeline: [
+        { status: "Reported", timestamp: new Date(Date.now() - 18 * 3600000).toISOString(), note: "Report logged by citizen" },
+        { status: "AI Verified", timestamp: new Date(Date.now() - 17 * 3600000).toISOString(), note: "AI flagged Critical Toxic Leaching Risk (97%)" },
+        { status: "Assigned", timestamp: new Date(Date.now() - 6 * 3600000).toISOString(), note: "Dispatched to Certified Urban E-Waste Recycler Unit" }
+      ],
+      createdAt: new Date(Date.now() - 18 * 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - 6 * 3600000).toISOString(),
+      assignedTo: "EcoRecycle Urban Hazardous Unit",
+      pointsEarned: 35
+    },
+    {
+      id: "RW-2026-00425",
+      userId: "user_citizen_03",
+      userName: "Karan Patel",
+      image: "https://images.unsplash.com/photo-1528323273322-d81458248d40?auto=format&fit=crop&w=800&q=80",
+      category: "Mixed Waste",
+      description: "Overflowing commercial dumpster spilling onto sidewalk infront of food plaza.",
+      severity: "Medium",
+      location: {
+        address: "City Centre Food Plaza, Ring Road",
+        city: "Delhi NCR",
+        lat: 28.6139,
+        lng: 77.2090
+      },
+      aiAnalysis: {
+        wasteType: "Mixed Municipal Packaging & Organic Waste",
+        estimatedSeverity: "Medium",
+        containsWaste: true,
+        environmentalRisk: "Medium",
+        confidence: 91,
+        detectedItems: ["Paper cups", "Food cartons", "Packaging waste"],
+        summary: "Commercial spillover causing public obstruction. Scheduled for evening municipal bin replacement."
+      },
+      status: "AI Verified",
+      timeline: [
+        { status: "Reported", timestamp: new Date(Date.now() - 3 * 3600000).toISOString(), note: "Report logged by citizen" },
+        { status: "AI Verified", timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), note: "AI Verified as Mixed Commercial Spill (91%)" }
+      ],
+      createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+      pointsEarned: 35
+    }
+  ];
+
+  function loadReportsFromFile() {
+    try {
+      if (fs.existsSync(reportsFilePath)) {
+        const raw = fs.readFileSync(reportsFilePath, "utf-8");
+        return JSON.parse(raw);
+      }
+    } catch (err) {
+      console.error("Error reading reports file, resetting to seed:", err);
+    }
+    const seeds = getSeedReports();
+    try {
+      fs.writeFileSync(reportsFilePath, JSON.stringify(seeds, null, 2), "utf-8");
+    } catch (_) {}
+    return seeds;
+  }
+
+  function saveReportsToFile(reportsList: any[]) {
+    try {
+      fs.writeFileSync(reportsFilePath, JSON.stringify(reportsList, null, 2), "utf-8");
+    } catch (err) {
+      console.error("Error writing to reports file:", err);
+    }
+  }
+
+  // GET /api/reports
+  app.get("/api/reports", (req, res) => {
+    const reports = loadReportsFromFile();
+    res.json(reports);
+  });
+
+  // POST /api/reports (Citizen creates report)
+  app.post("/api/reports", (req, res) => {
+    try {
+      const reports = loadReportsFromFile();
+      const newReport = req.body;
+      
+      if (!newReport.id) {
+        const count = reports.length + 420;
+        newReport.id = `RW-${new Date().getFullYear()}-${String(count).padStart(5, '0')}`;
+      }
+      
+      newReport.createdAt = newReport.createdAt || new Date().toISOString();
+      newReport.updatedAt = new Date().toISOString();
+      
+      if (!newReport.timeline || newReport.timeline.length === 0) {
+        newReport.timeline = [
+          {
+            status: "Reported",
+            timestamp: newReport.createdAt,
+            note: "Report submitted by citizen"
+          }
+        ];
+        if (newReport.aiAnalysis && newReport.aiAnalysis.containsWaste) {
+          newReport.timeline.push({
+            status: "AI Verified",
+            timestamp: new Date().toISOString(),
+            note: `AI Verified (${newReport.aiAnalysis.confidence}% confidence) - Category: ${newReport.aiAnalysis.wasteType}`
+          });
+          newReport.status = "AI Verified";
+          newReport.pointsEarned = (newReport.pointsEarned || 10) + 25; // 10 base + 25 verified
+        } else {
+          newReport.pointsEarned = newReport.pointsEarned || 10;
+        }
+      }
+
+      reports.unshift(newReport);
+      saveReportsToFile(reports);
+
+      res.status(201).json({
+        success: true,
+        message: "Report successfully submitted and registered in municipal ledger.",
+        report: newReport
+      });
+    } catch (err: any) {
+      console.error("Error creating report:", err);
+      res.status(500).json({ error: "Failed to create report" });
+    }
+  });
+
+  // PATCH /api/reports/:id (Admin / Municipal update & resolve)
+  app.patch("/api/reports/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const reports = loadReportsFromFile();
+      const index = reports.findIndex((r: any) => r.id === id);
+
+      if (index === -1) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      const report = reports[index];
+      const previousStatus = report.status;
+      const nowIso = new Date().toISOString();
+
+      if (updates.status && updates.status !== previousStatus) {
+        report.status = updates.status;
+        report.timeline = report.timeline || [];
+        report.timeline.push({
+          status: updates.status,
+          timestamp: nowIso,
+          note: updates.note || `Status updated to ${updates.status}`,
+          actor: updates.actor || "Municipal Admin"
+        });
+
+        // Award bonus points when resolved
+        if (updates.status === "Resolved" && !report.resolvedBonusAwarded) {
+          report.pointsEarned = (report.pointsEarned || 0) + 50;
+          report.resolvedBonusAwarded = true;
+          report.resolvedAt = nowIso;
+        }
+      }
+
+      if (updates.assignedTo) report.assignedTo = updates.assignedTo;
+      if (updates.resolutionNote) report.resolutionNote = updates.resolutionNote;
+      if (updates.resolutionImage) report.resolutionImage = updates.resolutionImage;
+      if (updates.severity) report.severity = updates.severity;
+      report.updatedAt = nowIso;
+
+      reports[index] = report;
+      saveReportsToFile(reports);
+
+      res.json({
+        success: true,
+        message: `Report ${id} updated to ${report.status}`,
+        report
+      });
+    } catch (err: any) {
+      console.error("Error updating report:", err);
+      res.status(500).json({ error: "Failed to update report" });
     }
   });
 

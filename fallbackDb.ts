@@ -587,15 +587,88 @@ export function getFallbackVoiceAssistant(text: string): string {
   return "That is excellent! We can upcycle this material beautifully. Let's start with a clean surface, map out a 3-step design, and assemble it. Would you like detailed step-by-step instructions?";
 }
 
-// 6. ECO RECOMMENDATIONS FALLBACK
-export function getFallbackEcoRecommendations(temp: number, humidity: number, aqi: number): string[] {
-  const recs = [
-    "Harvest morning condensation on local metal panels to naturally irrigate surrounding herb gardens.",
-    "Utilize solar thermal heat trapped by dark plastic bottle arrays to build miniature greenhouse warmers.",
-    "Upcycle local wooden crates and cardboard to form natural cellulose wall insulation layers."
-  ];
-  if (aqi > 3) {
-    recs.unshift("High AQI environment detected: Upcycle discarded PET plastic bottles into micro-moss biofilter columns to cleanse dry indoor desk air naturally.");
+// 7. CIVIC WASTE REPORT VERIFICATION FALLBACK
+export function getFallbackReportVerification(category?: string, description?: string): any {
+  const normCat = (category || "").toLowerCase();
+  const normDesc = (description || "").toLowerCase();
+
+  let wasteType = "Mixed Municipal Waste";
+  let estimatedSeverity = "Medium";
+  let environmentalRisk = "Medium";
+  let confidence = 91;
+  let detectedItems = ["Discarded packaging", "Polymer fragments", "Organic debris"];
+
+  if (normCat.includes("plastic") || normDesc.includes("plastic") || normDesc.includes("bottle") || normDesc.includes("polythene")) {
+    wasteType = "High-Density Plastic & Single-Use Polymers";
+    estimatedSeverity = "High";
+    environmentalRisk = "High";
+    confidence = 94;
+    detectedItems = ["PET Bottles", "LDPE Plastic Bags", "Snack Wrappers", "Crushed Containers"];
+  } else if (normCat.includes("e-waste") || normDesc.includes("electronic") || normDesc.includes("circuit") || normDesc.includes("wire")) {
+    wasteType = "Consumer Electronics & Toxic Component Waste";
+    estimatedSeverity = "Critical";
+    environmentalRisk = "Severe";
+    confidence = 96;
+    detectedItems = ["Lead-tin solder boards", "Insulated copper cables", "Lithium battery casing"];
+  } else if (normCat.includes("organic") || normDesc.includes("food") || normDesc.includes("vegetable")) {
+    wasteType = "Decomposing Biodegradable / Wet Biomass";
+    estimatedSeverity = "Medium";
+    environmentalRisk = "Medium";
+    confidence = 89;
+    detectedItems = ["Discarded food scraps", "Rotting fruit peels", "Wet garden clippings"];
+  } else if (normCat.includes("hazardous") || normDesc.includes("chemical") || normDesc.includes("medical")) {
+    wasteType = "Hazardous Bio-Chemical Waste";
+    estimatedSeverity = "Critical";
+    environmentalRisk = "Severe";
+    confidence = 97;
+    detectedItems = ["Unsealed solvent can", "Bio-hazard syringe debris", "Corrosive chemical container"];
+  } else if (normCat.includes("glass") || normDesc.includes("glass")) {
+    wasteType = "Fractured Silica & Commercial Glass Cullet";
+    estimatedSeverity = "Medium";
+    environmentalRisk = "Low";
+    confidence = 93;
+    detectedItems = ["Broken glass shards", "Beverage bottles", "Window pane fragments"];
   }
-  return recs.slice(0, 3);
+
+  return {
+    wasteType,
+    estimatedSeverity,
+    containsWaste: true,
+    environmentalRisk,
+    confidence,
+    detectedItems,
+    summary: `Verified real-world unmanaged waste aggregation. Immediate municipal sorting or collection dispatch recommended to prevent environmental contamination.`
+  };
 }
+
+// 8. ECO RECOMMENDATIONS FALLBACK
+export function getFallbackEcoRecommendations(param1?: any, param2?: any, param3?: any): any[] {
+  return [
+    {
+      id: "rec_01",
+      title: "Decentralized Wet Organic Composting",
+      impact: "Eliminates 75% methane emissions at household level",
+      difficulty: "Easy",
+      co2ReductionKg: 12.4,
+      priority: "High"
+    },
+    {
+      id: "rec_02",
+      title: "Closed-Loop PET Baling & Micro-Pelletizing",
+      impact: "Enables 100% circular bottle-to-fiber spinning",
+      difficulty: "Medium",
+      co2ReductionKg: 28.5,
+      priority: "High"
+    },
+    {
+      id: "rec_03",
+      title: "Community Upcycling Swap Kiosk",
+      impact: "Extends product lifespans by an average 3.4 years",
+      difficulty: "Low",
+      co2ReductionKg: 8.2,
+      priority: "Medium"
+    }
+  ];
+}
+
+

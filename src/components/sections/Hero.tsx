@@ -48,12 +48,12 @@ export default function Hero({ language, onNavigate }: HeroProps) {
           </motion.button>
           
           <motion.button 
-            onClick={() => onNavigate('studio')}
+            onClick={() => onNavigate('reportWaste')}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="btn-secondary w-full sm:w-auto"
           >
-            {t.hero.exploreStudio}
+            {t.hero.reportWaste || 'Report Waste Hotspot'}
           </motion.button>
         </div>
       </motion.div>

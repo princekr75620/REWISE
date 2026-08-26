@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Upload, RefreshCw, AlertCircle, Sparkles, Microscope, ArrowRight, Zap, Target, PlusCircle, HelpCircle, QrCode, Scan } from 'lucide-react';
+import { Camera, Upload, RefreshCw, AlertCircle, Sparkles, Microscope, ArrowRight, Zap, Target, PlusCircle, HelpCircle, QrCode, Scan, Compass, FileCode } from 'lucide-react';
 import { HoloCard } from '../ui/HoloCard';
 import { analyzeWaste, generateMoreReuseIdeas, analyzeCode, analyzeCodeImage } from '../../services/ai';
 import { cn } from '../../lib/utils';
 import confetti from 'canvas-confetti';
 import jsQR from 'jsqr';
 import { canScan, recordScan } from '../../lib/subscription';
+import { BlueprintSchematicModal } from '../ui/BlueprintSchematicModal';
+import { BlueprintItem } from '../../types';
 
 interface ScanResult {
   itemName: string;
@@ -41,6 +43,7 @@ export default function Scanner({ language }: ScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMethodology, setShowMethodology] = useState(false);
+  const [activeBlueprintModal, setActiveBlueprintModal] = useState<BlueprintItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // QR and Barcode states/refs
@@ -696,18 +699,47 @@ export default function Scanner({ language }: ScannerProps) {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2 pt-4">
-                        <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-sans font-bold uppercase text-slate-300">
-                          {result.material}
-                        </span>
-                        <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-sans font-bold uppercase text-emerald-400">
-                          {result.confidence || 98}% Match
-                        </span>
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-sans font-bold uppercase text-slate-300">
+                            {result.material}
+                          </span>
+                          <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-sans font-bold uppercase text-emerald-400">
+                            {result.confidence || 98}% Match
+                          </span>
+                        </div>
+
+                        {result.reuseIdeas.length > 0 && (
+                          <button
+                            onClick={() => {
+                              const firstIdea = result.reuseIdeas[0];
+                              setActiveBlueprintModal({
+                                title: firstIdea.title,
+                                originalMaterial: result.material,
+                                concept: firstIdea.description,
+                                difficulty: firstIdea.difficulty,
+                                estimatedCost: firstIdea.estimatedCost,
+                                materials: firstIdea.materialsNeeded,
+                                steps: firstIdea.steps,
+                                impact: result.impactReduction,
+                                videoTutorialTarget: firstIdea.videoTutorialTarget,
+                                vibe: `${result.itemName} Precision Transformation`
+                              });
+                            }}
+                            className="px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                          >
+                            <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>📐 Open Master Blueprint</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     <div className="space-y-4">
-                      <h4 className="text-sm font-sans font-bold text-slate-500 uppercase tracking-[0.3em] pl-2">Generated Blueprints</h4>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-sans font-bold text-slate-500 uppercase tracking-[0.3em] pl-2">Generated Blueprints</h4>
+                        <span className="text-[10px] font-mono text-cyan-400/80 uppercase">CAD & Schematics Available</span>
+                      </div>
                       <div className="grid gap-4">
                         {result.reuseIdeas.map((idea, idx) => (
                           <motion.div
@@ -715,11 +747,13 @@ export default function Scanner({ language }: ScannerProps) {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.1 }}
-                            onClick={() => setSelectedIdea(idx)}
-                            className="glass-premium p-6 rounded-2xl cursor-pointer hover:border-emerald-500/30 transition-all group"
+                            className="glass-premium p-6 rounded-2xl hover:border-emerald-500/30 transition-all group relative"
                           >
-                            <div className="flex justify-between items-center">
-                              <div className="space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div 
+                                onClick={() => setSelectedIdea(idx)}
+                                className="space-y-2 cursor-pointer flex-1"
+                              >
                                 <div className="flex items-center gap-3">
                                   <div className={cn(
                                     "w-2 h-2 rounded-full",
@@ -732,7 +766,36 @@ export default function Scanner({ language }: ScannerProps) {
                                 </div>
                                 <p className="text-sm text-slate-400 font-sans line-clamp-1">{idea.description}</p>
                               </div>
-                              <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => {
+                                    setActiveBlueprintModal({
+                                      title: idea.title,
+                                      originalMaterial: result.material,
+                                      concept: idea.description,
+                                      difficulty: idea.difficulty,
+                                      estimatedCost: idea.estimatedCost,
+                                      materials: idea.materialsNeeded,
+                                      steps: idea.steps,
+                                      impact: result.impactReduction,
+                                      videoTutorialTarget: idea.videoTutorialTarget,
+                                      vibe: `${result.itemName} Upcycling Protocol`
+                                    });
+                                  }}
+                                  className="px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                  <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                                  <span>Blueprint</span>
+                                </button>
+
+                                <button 
+                                  onClick={() => setSelectedIdea(idx)}
+                                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-emerald-400 transition-all cursor-pointer"
+                                >
+                                  <ArrowRight className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                           </motion.div>
                         ))}
@@ -814,14 +877,38 @@ export default function Scanner({ language }: ScannerProps) {
                           </div>
                        </div>
 
-                       <a 
-                          href={`https://www.youtube.com/results?search_query=${encodeURIComponent(result.reuseIdeas[selectedIdea].videoTutorialTarget)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-primary w-full"
-                        >
-                           Search Visual Tutorials <ArrowRight className="w-5 h-5" />
-                        </a>
+                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                         <button
+                            onClick={() => {
+                              const curr = result.reuseIdeas[selectedIdea];
+                              setActiveBlueprintModal({
+                                title: curr.title,
+                                originalMaterial: result.material,
+                                concept: curr.description,
+                                difficulty: curr.difficulty,
+                                estimatedCost: curr.estimatedCost,
+                                materials: curr.materialsNeeded,
+                                steps: curr.steps,
+                                impact: result.impactReduction,
+                                videoTutorialTarget: curr.videoTutorialTarget,
+                                vibe: `${result.itemName} Precision Protocol`
+                              });
+                            }}
+                            className="flex-1 px-6 py-4 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10"
+                         >
+                            <Compass className="w-4 h-4 text-cyan-400" />
+                            <span>📐 Open Technical Blueprint</span>
+                         </button>
+
+                         <a 
+                            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(result.reuseIdeas[selectedIdea].videoTutorialTarget)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-primary flex-1 flex items-center justify-center gap-2"
+                          >
+                             Search Visual Tutorials <ArrowRight className="w-5 h-5" />
+                          </a>
+                       </div>
                     </div>
                   </motion.div>
                 )}
@@ -910,6 +997,16 @@ export default function Scanner({ language }: ScannerProps) {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Blueprint CAD Schematic Modal */}
+      <AnimatePresence>
+        {activeBlueprintModal && (
+          <BlueprintSchematicModal
+            blueprint={activeBlueprintModal}
+            onClose={() => setActiveBlueprintModal(null)}
+          />
         )}
       </AnimatePresence>
     </div>

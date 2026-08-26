@@ -105,16 +105,15 @@ export default function VoiceAssistant({ onCommand, language }: VoiceAssistantPr
       addAssistantMessage('Opening Gmail Communication Hub.');
       return;
     } else if (
-      command.includes('weather') || 
-      command.includes('climate') || 
-      command.includes('forecast') ||
-      command.includes('show weather') ||
-      command.includes('what\'s the forecast')
+      command.includes('operation') || 
+      command.includes('collection') || 
+      command.includes('transport') ||
+      command.includes('segregation') ||
+      command.includes('recycling') ||
+      command.includes('fleet')
     ) {
-      onCommand?.('weather');
-      const msg = command.includes('india') || command.includes('indian') 
-        ? 'Accessing Indian environmental telemetry and local weather data.'
-        : 'Accessing local atmospheric telemetry and your weather report.';
+      onCommand?.('operations');
+      const msg = 'Opening Waste Operations Command Dashboard (Collection, Transportation, Segregation, Recycling Centers).';
       addAssistantMessage(msg);
       return;
     }

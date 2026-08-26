@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Leaf, Scan, Zap, CloudSun, Sparkles, User, LogOut, Languages, Bookmark, LayoutGrid, Mail, CreditCard } from 'lucide-react';
+import { Leaf, Scan, Zap, Sparkles, User, LogOut, Languages, Bookmark, LayoutGrid, Mail, CreditCard, Gauge, Truck, Camera } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { LanguageSelector, Language } from '../ui/LanguageSelector';
 import { useTranslation } from '../../lib/translations';
@@ -31,11 +31,11 @@ export default function Navbar({ activeTab, setActiveTab, isLoggedIn, user, onLo
     { id: 'home', label: t.nav.home, icon: Leaf },
     { id: 'scanner', label: t.nav.scanner, icon: Scan },
     { id: 'generator', label: t.nav.generator, icon: Zap },
-    { id: 'studio', label: t.nav.studio, icon: Sparkles },
+    { id: 'reportWaste', label: t.nav.reportWaste || 'Report Waste', icon: Camera },
+    { id: 'operations', label: t.nav.operations || 'Operations', icon: Gauge },
     { id: 'vault', label: 'Vault', icon: Bookmark },
     { id: 'subscription', label: 'Membership', icon: CreditCard },
     { id: 'company', label: 'Company', icon: LayoutGrid },
-    { id: 'weather', label: t.nav.weather, icon: CloudSun },
   ];
 
   return (

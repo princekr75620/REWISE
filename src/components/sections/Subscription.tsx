@@ -17,7 +17,10 @@ import {
   AlertTriangle,
   Flame,
   Clock,
-  HeartHandshake
+  HeartHandshake,
+  Gift,
+  Tag,
+  Check
 } from 'lucide-react';
 import { 
   getSubscriptionState, 
@@ -27,13 +30,29 @@ import {
   UserSubscription, 
   SubscriptionTier 
 } from '../../lib/subscription';
+import { 
+  getUserEcoPoints, 
+  deductUserEcoPoints, 
+  getActiveMembershipVouchers, 
+  consumeMembershipVoucher,
+  ActiveMembershipVoucher
+} from '../../services/reports';
 import { HoloCard } from '../ui/HoloCard';
 import confetti from 'canvas-confetti';
 
 export default function Subscription() {
   const [subscription, setSubscription] = useState<UserSubscription>(getSubscriptionState());
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionTier | null>(null);
+  const [ecoPoints, setEcoPoints] = useState<number>(getUserEcoPoints());
+  const [activeVouchers, setActiveVouchers] = useState<ActiveMembershipVoucher[]>(getActiveMembershipVouchers());
   
+  // Eco Discount State
+  const [usePointsDiscount, setUsePointsDiscount] = useState<boolean>(true);
+  const [selectedPointsToUse, setSelectedPointsToUse] = useState<number>(0);
+  const [voucherCodeInput, setVoucherCodeInput] = useState<string>('');
+  const [appliedVoucher, setAppliedVoucher] = useState<ActiveMembershipVoucher | null>(null);
+  const [voucherMessage, setVoucherMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
   // Form checkout state
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
@@ -47,13 +66,54 @@ export default function Subscription() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [recentTransaction, setRecentTransaction] = useState<any | null>(null);
 
-  // Subscribe to core subscription state
+  // Subscribe to core subscription state & Eco Points updates
   useEffect(() => {
     const unsubscribe = subscribeToSubscription((sub) => {
       setSubscription(sub);
     });
-    return () => unsubscribe();
+
+    const updatePoints = () => {
+      setEcoPoints(getUserEcoPoints());
+      setActiveVouchers(getActiveMembershipVouchers());
+    };
+
+    window.addEventListener('rewise_points_updated', updatePoints);
+    window.addEventListener('rewise_vouchers_updated', updatePoints);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('rewise_points_updated', updatePoints);
+      window.removeEventListener('rewise_vouchers_updated', updatePoints);
+    };
   }, []);
+
+  // Set default points to use whenever a plan is selected
+  useEffect(() => {
+    if (!selectedPlan || selectedPlan === 'free') {
+      setSelectedPointsToUse(0);
+      setAppliedVoucher(null);
+      setVoucherMessage(null);
+      return;
+    }
+
+    const basePrice = selectedPlan === 'rupees_50' ? 50 : 300;
+    // Calculate suggested points: 10 pts = ₹1 discount. Max points = basePrice * 10
+    const maxPointsForFullPlan = basePrice * 10; // 500 for Orbit, 3000 for Voyager
+    const affordablePoints = Math.min(ecoPoints, maxPointsForFullPlan);
+
+    // If user has saved vouchers for this plan, check for best auto-match
+    const matchingVoucher = activeVouchers.find(v => v.tierTarget === selectedPlan);
+    if (matchingVoucher) {
+      setAppliedVoucher(matchingVoucher);
+      setSelectedPointsToUse(0);
+    } else if (affordablePoints >= 250 && selectedPlan === 'rupees_50') {
+      setSelectedPointsToUse(affordablePoints >= 500 ? 500 : 250);
+    } else if (affordablePoints >= 600 && selectedPlan === 'rupees_300') {
+      setSelectedPointsToUse(affordablePoints >= 1200 ? 1200 : 600);
+    } else {
+      setSelectedPointsToUse(affordablePoints > 0 ? affordablePoints : 0);
+    }
+  }, [selectedPlan, ecoPoints, activeVouchers]);
 
   // Format Card Number (space every 4 digits)
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,7 +144,6 @@ export default function Subscription() {
 
   const startCheckout = (tier: SubscriptionTier) => {
     if (tier === 'free') {
-      // Downgrade or Reset back to Free
       if (confirm("Are you sure you want to revert to the Free Tier? This will restore standard counts.")) {
         resetUsageLimits();
         confetti({
@@ -137,7 +196,7 @@ export default function Subscription() {
     if (month < 1 || month > 12) return false;
     
     const now = new Date();
-    const currentMonth = now.getMonth() + 1; // 1-indexed
+    const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
     
     if (year < currentYear) return false;
@@ -146,11 +205,150 @@ export default function Subscription() {
     return true;
   };
 
+  // Pricing Calculations with Discounts
+  const basePlanPrice = selectedPlan === 'rupees_50' ? 50 : selectedPlan === 'rupees_300' ? 300 : 0;
+  
+  // Points discount calculation: 10 pts = ₹1 discount (or special presets: 250pts = ₹25, 500pts = ₹50, 600pts = ₹100, 1200pts = ₹300)
+  let pointsDiscountRupees = 0;
+  if (usePointsDiscount && selectedPointsToUse > 0) {
+    if (selectedPlan === 'rupees_50') {
+      if (selectedPointsToUse >= 500) pointsDiscountRupees = 50;
+      else if (selectedPointsToUse >= 250) pointsDiscountRupees = 25;
+      else pointsDiscountRupees = Math.floor(selectedPointsToUse / 10);
+    } else if (selectedPlan === 'rupees_300') {
+      if (selectedPointsToUse >= 1200) pointsDiscountRupees = 300;
+      else if (selectedPointsToUse >= 600) pointsDiscountRupees = 100;
+      else pointsDiscountRupees = Math.floor(selectedPointsToUse / 10);
+    } else {
+      pointsDiscountRupees = Math.floor(selectedPointsToUse / 10);
+    }
+  }
+
+  const voucherDiscountRupees = appliedVoucher ? appliedVoucher.discountRupees : 0;
+  const totalDiscount = Math.min(basePlanPrice, pointsDiscountRupees + voucherDiscountRupees);
+  const finalPriceDue = Math.max(0, basePlanPrice - totalDiscount);
+  const isFullyEcoFunded = finalPriceDue === 0;
+
+  const handleApplyVoucherCode = (codeToApply?: string) => {
+    const code = (codeToApply || voucherCodeInput).trim().toUpperCase();
+    if (!code) return;
+
+    if (code === 'ECOFREE' || code === 'ECO100FREE') {
+      setAppliedVoucher({
+        id: 'code_free',
+        code,
+        discountRupees: basePlanPrice,
+        tierTarget: selectedPlan === 'rupees_300' ? 'rupees_300' : 'rupees_50',
+        title: 'Special Promo: 100% Free Access',
+        createdDate: new Date().toLocaleDateString()
+      });
+      setVoucherMessage({ text: '🎉 100% Discount Voucher applied successfully!', isError: false });
+      return;
+    }
+
+    if (code === 'ECO25' || code.includes('ECO-25')) {
+      setAppliedVoucher({
+        id: 'code_25',
+        code,
+        discountRupees: 25,
+        tierTarget: 'rupees_50',
+        title: 'Promo Voucher: ₹25 Off',
+        createdDate: new Date().toLocaleDateString()
+      });
+      setVoucherMessage({ text: '✅ ₹25 Discount Voucher applied!', isError: false });
+      return;
+    }
+
+    if (code === 'ECO100' || code.includes('ECO-100')) {
+      setAppliedVoucher({
+        id: 'code_100',
+        code,
+        discountRupees: 100,
+        tierTarget: 'rupees_300',
+        title: 'Promo Voucher: ₹100 Off',
+        createdDate: new Date().toLocaleDateString()
+      });
+      setVoucherMessage({ text: '✅ ₹100 Discount Voucher applied!', isError: false });
+      return;
+    }
+
+    const saved = activeVouchers.find(v => v.code.toUpperCase() === code);
+    if (saved) {
+      setAppliedVoucher(saved);
+      setVoucherMessage({ text: `✅ Applied: ${saved.title} (-₹${saved.discountRupees})`, isError: false });
+      return;
+    }
+
+    setVoucherMessage({ text: '❌ Invalid or expired coupon code.', isError: true });
+  };
+
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    // Dynamic Validations
+    if (!selectedPlan) return;
+
+    // IF 100% Eco Funded with 0 Rupees Due
+    if (isFullyEcoFunded) {
+      setIsProcessing(true);
+      setProcessingStep("Validating Eco Points proof of civic action...");
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setProcessingStep("Redeeming points against civic treasury ledger...");
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setProcessingStep("Writing persistent subscription credentials...");
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      try {
+        // Deduct points if points were used
+        if (usePointsDiscount && selectedPointsToUse > 0) {
+          deductUserEcoPoints(
+            selectedPointsToUse, 
+            `Eco Points Redeemed for 100% Discount on ${selectedPlan === 'rupees_50' ? 'Basic Orbit Tier' : 'Star Voyager Annual Tier'}`
+          );
+        }
+
+        if (appliedVoucher && !appliedVoucher.id.startsWith('code_')) {
+          consumeMembershipVoucher(appliedVoucher.id);
+        }
+
+        const duration = selectedPlan === 'rupees_50' ? 'Monthly Access (100% Eco-Funded)' : '1 Year Access (100% Eco-Funded)';
+        await purchaseSubscription(
+          selectedPlan, 
+          `REWISE Civic Eco Points (100% Discount: ₹${basePlanPrice} Saved)`, 
+          cardName.trim() || 'Verified Eco Citizen', 
+          'ECO-POINTS-FREE'
+        );
+
+        const txHash = `TX-${Math.floor(100000 + Math.random() * 900000)}-ECO`;
+        const receipt = {
+          txHash,
+          amount: '₹0 (100% Eco-Points Funded)',
+          savedAmount: `₹${basePlanPrice} Saved via Points & Vouchers`,
+          duration,
+          planName: selectedPlan === 'rupees_50' ? 'Basic Orbit Tier' : 'Star Voyager Annual Tier',
+          date: new Date().toLocaleString(),
+          cardEnding: 'ECO-REWARDS',
+          cardholder: cardName.trim() || 'Civic Sustainability Contributor'
+        };
+
+        setRecentTransaction(receipt);
+        setIsProcessing(false);
+        setShowReceipt(true);
+
+        confetti({
+          particleCount: 160,
+          spread: 80,
+          colors: ['#06b6d4', '#10b981', '#ffffff']
+        });
+        return;
+      } catch (err: any) {
+        setFormError(err.message || "Eco points redemption aborted.");
+        setIsProcessing(false);
+        return;
+      }
+    }
+
+    // Standard or Partial Discount Card Payment Validation
     if (!cardName.trim()) {
       setFormError("Cardholder Name is required.");
       return;
@@ -161,14 +359,13 @@ export default function Subscription() {
       return;
     }
 
-    // Luhn validation check
     if (!checkLuhn(cleanCard)) {
-      setFormError("❌ Card Checksum Error: Invalid card number (failed the Luhn/Mod 10 verification algorithm). Please type a real debit/credit card number.");
+      setFormError("❌ Card Checksum Error: Invalid card number (failed the Luhn verification). Please type a valid card number.");
       return;
     }
 
     if (!isExpiryDateValid(expiry)) {
-      setFormError("❌ Expiration Error: Expiry date MM/YY must be a valid future or current month, and format must be MM/YY.");
+      setFormError("❌ Expiration Error: Expiry date MM/YY must be a valid future or current month, format MM/YY.");
       return;
     }
 
@@ -179,32 +376,45 @@ export default function Subscription() {
       return;
     }
 
-    // Begin premium transaction simulation
+    // Begin payment simulation with discounted final price
     setIsProcessing(true);
     const steps = [
       "Contacting secure payment broker nodes...",
-      `Routing through ${brand} transaction gateway...`,
-      "Generating asymmetric credential key pairs...",
-      "Validating card index signatures...",
+      `Applying Eco Points Discount (-₹${totalDiscount})...`,
+      `Routing net ₹${finalPriceDue} through ${brand} gateway...`,
       "Settling ledger nodes and writing subscriptions..."
     ];
 
     for (let i = 0; i < steps.length; i++) {
       setProcessingStep(steps[i]);
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 700));
     }
 
     try {
-      if (!selectedPlan) return;
-      const amount = selectedPlan === 'rupees_50' ? '₹50' : '₹300';
+      // Deduct used points
+      if (usePointsDiscount && selectedPointsToUse > 0) {
+        deductUserEcoPoints(
+          selectedPointsToUse, 
+          `Eco Points Redeemed for Discount on ${selectedPlan === 'rupees_50' ? 'Basic Orbit' : 'Star Voyager'}`
+        );
+      }
+
+      if (appliedVoucher && !appliedVoucher.id.startsWith('code_')) {
+        consumeMembershipVoucher(appliedVoucher.id);
+      }
+
       const duration = selectedPlan === 'rupees_50' ? 'Monthly Access' : '1 Year Access';
-      
-      const newSub = await purchaseSubscription(selectedPlan, `Credit / Debit Card (${brand})`, cardName, cleanCard);
+      await purchaseSubscription(
+        selectedPlan, 
+        `Card (${brand}) + Eco Points Discount (Saved ₹${totalDiscount})`, 
+        cardName, 
+        cleanCard
+      );
       
       const txHash = `TX-${Math.floor(100000 + Math.random() * 900000)}-RW`;
       const receipt = {
         txHash,
-        amount,
+        amount: `₹${finalPriceDue} (Saved ₹${totalDiscount} via Eco Points)`,
         duration,
         planName: selectedPlan === 'rupees_50' ? 'Basic Orbit Tier' : 'Star Voyager Annual Tier',
         date: new Date().toLocaleString(),
@@ -249,8 +459,32 @@ export default function Subscription() {
           Elevate Your <span className="text-gradient">Experience.</span>
         </h2>
         <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-4xl font-sans">
-          Manage your circular account credentials. Swap subscription layers smoothly. Enjoy limited sandbox testing, or purchase persistent unlimited access bounds across chatbot channels and visual image recognition shards.
+          Manage your circular account credentials. Swap subscription layers smoothly. Use your earned <strong>REWISE Eco Points</strong> to unlock exclusive discounts or get 100% free monthly & annual subscriptions!
         </p>
+      </div>
+
+      {/* SPECIAL CIVIC REWARDS DISCOUNT HIGHLIGHT BAR */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/30 backdrop-blur-xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-2xl shrink-0 text-emerald-400">
+            <Gift className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-xs font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-2">
+              <span>Civic Eco Points Balance:</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-white font-bold">{ecoPoints.toLocaleString()} PTS</span>
+            </div>
+            <p className="text-slate-300 text-xs mt-0.5">
+              You can apply your points for <strong>up to 100% discount</strong> on both Basic Orbit & Star Voyager annual tiers.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] text-teal-300 bg-teal-500/10 px-3 py-1.5 rounded-lg border border-teal-500/20 font-medium">
+            10 Eco PTS = ₹1 Discount
+          </span>
+        </div>
       </div>
 
       {/* Usage Analytics Panel */}
@@ -397,9 +631,19 @@ export default function Subscription() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <span className="text-5xl font-display font-bold text-white">₹50</span>
-              <span className="text-xs text-slate-500 font-mono"> / monthly cycle</span>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-display font-bold text-white">₹50</span>
+                <span className="text-xs text-slate-500 font-mono"> / monthly cycle</span>
+              </div>
+              
+              {/* Eco Points Discount Helper Tag */}
+              <div className="pt-2">
+                <span className="text-[10px] font-mono px-2 py-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 font-bold">
+                  <Gift className="w-3 h-3 text-emerald-400" /> 
+                  {ecoPoints >= 500 ? 'FREE with 500 Eco Points' : ecoPoints >= 250 ? '₹25 with 250 Eco Points (50% Off)' : 'Eco Points Discount Eligible'}
+                </span>
+              </div>
             </div>
 
             <ul className="space-y-3.5 border-t border-white/5 pt-6 text-xs text-slate-300 font-sans">
@@ -431,7 +675,7 @@ export default function Subscription() {
                 : 'bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)]'
             }`}
           >
-            {subscription.tier === 'rupees_50' ? 'Subscription is Active' : 'Acquire Orbit Tier'}
+            {subscription.tier === 'rupees_50' ? 'Subscription is Active' : 'Acquire Orbit Tier (Discount Eligible)'}
           </button>
         </HoloCard>
 
@@ -453,12 +697,19 @@ export default function Subscription() {
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-5xl font-display font-bold text-white">₹300</span>
                 <span className="text-xs text-slate-500 font-mono"> / 1 year</span>
               </div>
-              <span className="text-[9px] font-mono text-emerald-400 block uppercase font-bold">SAVE ₹300 OVER MONTHLY</span>
+              
+              {/* Eco Points Discount Helper Tag */}
+              <div className="pt-2">
+                <span className="text-[10px] font-mono px-2 py-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 font-bold">
+                  <Gift className="w-3 h-3 text-emerald-400" /> 
+                  {ecoPoints >= 1200 ? 'FREE 1-Year with 1200 Eco Points' : ecoPoints >= 600 ? '₹200 with 600 Eco Points (₹100 Off)' : 'Eco Points Discount Eligible'}
+                </span>
+              </div>
             </div>
 
             <ul className="space-y-3.5 border-t border-white/5 pt-6 text-xs text-slate-300 font-sans">
@@ -490,127 +741,311 @@ export default function Subscription() {
                 : 'bg-[#10b981] text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
             }`}
           >
-            {subscription.tier === 'rupees_300' ? 'Annual Subscription is Active' : 'Acquire Star Voyager'}
+            {subscription.tier === 'rupees_300' ? 'Annual Subscription is Active' : 'Acquire Star Voyager (Discount Eligible)'}
           </button>
         </HoloCard>
       </div>
 
-      {/* CHECKOUT MODAL FLOW */}
+      {/* CHECKOUT MODAL FLOW WITH ECO POINTS DISCOUNT */}
       <AnimatePresence>
         {selectedPlan && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="relative w-full max-w-xl glass-premium rounded-[2rem] p-8 md:p-10 border border-white/10 shadow-2xl bg-[#091122] overflow-hidden"
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg glass-premium rounded-2xl p-4 sm:p-5 border border-white/10 shadow-2xl bg-[#091122] max-h-[92vh] flex flex-col my-auto"
             >
-              {/* Back Button / Title */}
-              <div className="flex justify-between items-center border-b border-white/5 pb-4 mb-6">
-                <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-cyan-400 animate-pulse" />
-                  <h3 className="text-sm font-display font-bold uppercase tracking-widest text-white leading-none">
-                    Configure Gateway Payment
-                  </h3>
+              {/* Modal Header */}
+              <div className="flex justify-between items-center border-b border-white/10 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-display font-bold uppercase tracking-wider text-white">
+                      Checkout & Rewards
+                    </h3>
+                    <span className="text-[10px] text-slate-400 font-sans">
+                      {selectedPlan === 'rupees_50' ? 'Basic Orbit (Monthly)' : 'Star Voyager (1 Year)'}
+                    </span>
+                  </div>
                 </div>
                 <button 
                   onClick={() => setSelectedPlan(null)}
-                  className="text-slate-500 hover:text-white transition-colors"
+                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-4 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center mb-6">
-                <div>
-                  <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold leading-none mb-1">Selected Plan coordinate</span>
-                  <span className="text-xs text-white font-bold block">
-                    {selectedPlan === 'rupees_50' ? 'Basic Orbit Tier (Monthly Option)' : 'Star Voyager Annual (1 Year Option)'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold leading-none mb-1">Total Due</span>
-                  <span className="text-lg text-cyan-400 font-bold block">
-                    {selectedPlan === 'rupees_50' ? '₹50' : '₹300'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Checkout Form */}
-              <form onSubmit={handleCheckoutSubmit} className="space-y-4 font-sans text-xs">
-                {formError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-[10px] font-mono text-red-400 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                    <span>{formError}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-mono tracking-wider text-slate-500 block font-bold">Cardholder Holder Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Prince Kumar"
-                    value={cardName}
-                    onChange={(e) => setCardName(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase font-mono tracking-wider text-slate-500 block font-bold">Card Number Coordinate</label>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      placeholder="4000 1234 5678 9010"
-                      value={cardNumber}
-                      onChange={handleCardNumberChange}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pr-20 text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono tracking-wider"
-                    />
-                    <div className="absolute right-3.5 top-3.5 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/5 text-cyan-400">
-                      {getCardBrandName(cardNumber)}
+              {/* Scrollable Container for Compact Form */}
+              <div className="overflow-y-auto pr-1 space-y-3 custom-scrollbar text-xs">
+                {/* Compact Price Summary Bar */}
+                <div className="p-3 rounded-xl bg-slate-900/90 border border-white/5 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white">
+                        {selectedPlan === 'rupees_50' ? 'Basic Orbit Tier' : 'Star Voyager Annual'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 line-through">₹{basePlanPrice}</span>
                     </div>
+                    {totalDiscount > 0 ? (
+                      <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                        <Gift className="w-3 h-3" /> Eco Discount: -₹{totalDiscount}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-mono">Standard Price</span>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider block">Net Payable</span>
+                    <span className={`text-base font-display font-bold leading-tight ${isFullyEcoFunded ? 'text-emerald-400' : 'text-cyan-400'}`}>
+                      {isFullyEcoFunded ? '₹0 (FREE)' : `₹${finalPriceDue}`}
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-mono tracking-wider text-slate-500 block font-bold">Expiry Target</label>
+                {/* Compact Eco Points Redemption Box */}
+                <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/25 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-[11px] font-bold text-white uppercase tracking-wider">
+                        Use Eco Points
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                        {ecoPoints} PTS
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={usePointsDiscount} 
+                        onChange={(e) => setUsePointsDiscount(e.target.checked)}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-8 h-4 bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+
+                  {usePointsDiscount && (
+                    <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-emerald-500/15">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPointsToUse(0)}
+                        className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition-all ${
+                          selectedPointsToUse === 0 
+                            ? 'bg-white/15 text-white border border-white/20' 
+                            : 'bg-slate-900/60 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        None
+                      </button>
+
+                      {selectedPlan === 'rupees_50' ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={ecoPoints < 250}
+                            onClick={() => setSelectedPointsToUse(250)}
+                            className={`py-1.5 px-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                              selectedPointsToUse === 250 
+                                ? 'bg-emerald-500 text-slate-950 font-bold' 
+                                : ecoPoints >= 250 
+                                  ? 'bg-slate-900/90 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10' 
+                                  : 'bg-slate-900/30 text-slate-600 cursor-not-allowed'
+                            }`}
+                          >
+                            250 Pts (-₹25)
+                          </button>
+                          <button
+                            type="button"
+                            disabled={ecoPoints < 500}
+                            onClick={() => setSelectedPointsToUse(500)}
+                            className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                              selectedPointsToUse === 500 
+                                ? 'bg-emerald-400 text-slate-950 shadow-sm shadow-emerald-500/20' 
+                                : ecoPoints >= 500 
+                                  ? 'bg-slate-900/90 text-teal-300 border border-teal-500/30 hover:bg-teal-500/10' 
+                                  : 'bg-slate-900/30 text-slate-600 cursor-not-allowed'
+                            }`}
+                          >
+                            500 Pts (FREE)
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={ecoPoints < 600}
+                            onClick={() => setSelectedPointsToUse(600)}
+                            className={`py-1.5 px-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                              selectedPointsToUse === 600 
+                                ? 'bg-emerald-500 text-slate-950 font-bold' 
+                                : ecoPoints >= 600 
+                                  ? 'bg-slate-900/90 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10' 
+                                  : 'bg-slate-900/30 text-slate-600 cursor-not-allowed'
+                            }`}
+                          >
+                            600 Pts (-₹100)
+                          </button>
+                          <button
+                            type="button"
+                            disabled={ecoPoints < 1200}
+                            onClick={() => setSelectedPointsToUse(1200)}
+                            className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                              selectedPointsToUse === 1200 
+                                ? 'bg-emerald-400 text-slate-950 shadow-sm shadow-emerald-500/20' 
+                                : ecoPoints >= 1200 
+                                  ? 'bg-slate-900/90 text-teal-300 border border-teal-500/30 hover:bg-teal-500/10' 
+                                  : 'bg-slate-900/30 text-slate-600 cursor-not-allowed'
+                            }`}
+                          >
+                            1200 Pts (FREE)
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Compact Promo Code Input Row */}
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-400">
+                    <span>Promo Voucher</span>
+                    {appliedVoucher && (
+                      <button 
+                        type="button" 
+                        onClick={() => { setAppliedVoucher(null); setVoucherMessage(null); }}
+                        className="text-rose-400 hover:underline text-[9px]"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5">
                     <input 
                       type="text" 
-                      placeholder="MM/YY"
-                      value={expiry}
-                      onChange={handleExpiryChange}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono text-center"
+                      placeholder="e.g. ECO25, ECO100, ECOFREE"
+                      value={voucherCodeInput}
+                      onChange={(e) => setVoucherCodeInput(e.target.value)}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono focus:outline-none focus:border-cyan-400 transition-colors"
                     />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyVoucherCode()}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold font-mono transition-colors"
+                    >
+                      Apply
+                    </button>
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-mono tracking-wider text-slate-500 block font-bold">Security CVV Code</label>
-                    <input 
-                      type="password" 
-                      placeholder={cardNumber.replace(/\D/g, '').startsWith('34') || cardNumber.replace(/\D/g, '').startsWith('37') ? "••••" : "•••"}
-                      maxLength={cardNumber.replace(/\D/g, '').startsWith('34') || cardNumber.replace(/\D/g, '').startsWith('37') ? 4 : 3}
-                      value={cvv}
-                      onChange={handleCvvChange}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono text-center"
-                      id="cvv_input_field"
-                    />
-                  </div>
+                  {voucherMessage && (
+                    <p className={`text-[10px] ${voucherMessage.isError ? 'text-rose-400' : 'text-emerald-400'} font-medium`}>
+                      {voucherMessage.text}
+                    </p>
+                  )}
                 </div>
 
-                <div className="pt-6 border-t border-white/5 flex justify-between items-center">
-                  <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <HeartHandshake className="w-3.5 h-3.5" /> Secure TLS Handshake
-                  </span>
+                {/* Checkout Form */}
+                <form onSubmit={handleCheckoutSubmit} className="space-y-3 font-sans">
+                  {formError && (
+                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-[10px] font-mono text-red-400 flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{formError}</span>
+                    </div>
+                  )}
 
-                  <button 
-                    type="submit"
-                    className="px-8 py-3.5 bg-cyan-500 hover:bg-cyan-400 text-black font-display font-bold uppercase text-[10px] tracking-[0.2em] rounded-xl transition-all shadow-[0_0_20px_rgba(6,182,212,0.1)] cursor-pointer"
-                  >
-                    Transmit Payment
-                  </button>
-                </div>
-              </form>
+                  {/* IF 100% DISCOUNT: Compact Banner */}
+                  {isFullyEcoFunded ? (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-1">
+                      <div className="flex items-center justify-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                        <Sparkles className="w-4 h-4" />
+                        <span>100% Free Eco Activation</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Zero payment required. Covered fully by your civic points & rewards!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] uppercase font-mono tracking-wider text-slate-400 block font-bold mb-1">Cardholder Name</label>
+                          <input 
+                            type="text" 
+                            placeholder="Prince Kumar"
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] uppercase font-mono tracking-wider text-slate-400 block font-bold mb-1">Card Number</label>
+                          <div className="relative">
+                            <input 
+                              type="text" 
+                              placeholder="4000 1234 5678 9010"
+                              value={cardNumber}
+                              onChange={handleCardNumberChange}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 pr-14 text-xs text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono"
+                            />
+                            <div className="absolute right-2 top-2 text-[8px] font-mono font-bold px-1 py-0.5 rounded bg-white/10 text-cyan-400">
+                              {getCardBrandName(cardNumber)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] uppercase font-mono tracking-wider text-slate-400 block font-bold mb-1">Expiry (MM/YY)</label>
+                          <input 
+                            type="text" 
+                            placeholder="MM/YY"
+                            value={expiry}
+                            onChange={handleExpiryChange}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono text-center"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] uppercase font-mono tracking-wider text-slate-400 block font-bold mb-1">CVV Code</label>
+                          <input 
+                            type="password" 
+                            placeholder={cardNumber.replace(/\D/g, '').startsWith('34') || cardNumber.replace(/\D/g, '').startsWith('37') ? "••••" : "•••"}
+                            maxLength={cardNumber.replace(/\D/g, '').startsWith('34') || cardNumber.replace(/\D/g, '').startsWith('37') ? 4 : 3}
+                            value={cvv}
+                            onChange={handleCvvChange}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition-colors font-mono text-center"
+                            id="cvv_input_field"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-3">
+                    <span className="text-[9px] font-mono text-slate-400 flex items-center gap-1">
+                      <HeartHandshake className="w-3 h-3 text-cyan-400" /> Secure 256-bit TLS
+                    </span>
+
+                    <button 
+                      type="submit"
+                      className={`px-5 py-2.5 font-display font-bold uppercase text-[10px] tracking-wider rounded-xl transition-all shadow-md cursor-pointer ${
+                        isFullyEcoFunded 
+                          ? 'bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 shadow-emerald-500/20' 
+                          : 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20'
+                      }`}
+                    >
+                      {isFullyEcoFunded ? `Activate Free (₹0)` : `Pay ₹${finalPriceDue}`}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </motion.div>
           </div>
         )}
@@ -669,7 +1104,7 @@ export default function Subscription() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">CREDENTIALS:</span>
-                  <span className="text-slate-200">Ending •••• {recentTransaction.cardEnding}</span>
+                  <span className="text-slate-200">{recentTransaction.cardEnding}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">ISSUER:</span>
@@ -682,7 +1117,7 @@ export default function Subscription() {
               </div>
 
               <p className="text-[10px] text-slate-500 font-sans leading-relaxed">
-                Thank you for your active participation. Your premium access constraints have been lifted globally. Enjoy unchained circular analysis tools.
+                Thank you for your active participation in civic circularity. Your premium access constraints have been lifted globally. Enjoy unchained circular analysis tools.
               </p>
 
               <button 
