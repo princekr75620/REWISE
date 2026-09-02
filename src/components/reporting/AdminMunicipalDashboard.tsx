@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, ShieldCheck, CheckCircle2, AlertTriangle, Clock, 
-  Truck, ArrowRight, Check, X, FileText, Sparkles, MapPin, RefreshCw, Send
+  Truck, ArrowRight, Check, X, FileText, Sparkles, MapPin, RefreshCw, Send,
+  Lock, KeyRound
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { WasteReport, ReportStatus, ReportSeverity } from '../../types';
 import { updateReportAdmin, addPointTransaction } from '../../services/reports';
+import MunicipalSecurityGate, { isMunicipalAdminAuthenticated, lockMunicipalAdmin } from './MunicipalSecurityGate';
 
 interface AdminMunicipalDashboardProps {
   reports: WasteReport[];
@@ -21,12 +23,22 @@ const WARD_CONTRACTORS = [
 ];
 
 export default function AdminMunicipalDashboard({ reports, onReportsUpdated }: AdminMunicipalDashboardProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState(isMunicipalAdminAuthenticated());
   const [selectedReport, setSelectedReport] = useState<WasteReport | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [assignee, setAssignee] = useState(WARD_CONTRACTORS[0]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleLockAdmin = () => {
+    lockMunicipalAdmin();
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return <MunicipalSecurityGate onUnlock={() => setIsAuthenticated(true)} />;
+  }
 
   const totalReports = reports.length;
   const pendingReports = reports.filter(r => r.status === 'Reported').length;
@@ -115,12 +127,28 @@ export default function AdminMunicipalDashboard({ reports, onReportsUpdated }: A
             </p>
           </div>
 
-          <button 
-            onClick={onReportsUpdated}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-2 border border-white/5 transition-all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Sync Ledger
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Verified</span>
+            </div>
+
+            <button 
+              onClick={onReportsUpdated}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-2 border border-white/5 transition-all"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Sync Ledger
+            </button>
+
+            <button 
+              onClick={handleLockAdmin}
+              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 text-xs font-semibold flex items-center gap-2 border border-rose-500/30 transition-all shadow-sm"
+              title="Lock Admin Session"
+            >
+              <Lock className="w-3.5 h-3.5 text-rose-400" />
+              <span>Lock Admin</span>
+            </button>
+          </div>
         </div>
 
         {/* 6 Key Performance Metrics */}

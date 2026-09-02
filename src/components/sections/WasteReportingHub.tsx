@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, FileText, Gift, Trophy, Building2, Sparkles, ShieldCheck, 
-  ArrowRight, CheckCircle2, TrendingUp, Zap, HelpCircle, Layers
+  ArrowRight, CheckCircle2, TrendingUp, Zap, HelpCircle, Layers, Lock
 } from 'lucide-react';
 import { Language } from '../ui/LanguageSelector';
 import { useTranslation } from '../../lib/translations';
@@ -13,6 +13,7 @@ import MyReportsList from '../reporting/MyReportsList';
 import RewardsDashboard from '../reporting/RewardsDashboard';
 import CommunityLeaderboard from '../reporting/CommunityLeaderboard';
 import AdminMunicipalDashboard from '../reporting/AdminMunicipalDashboard';
+import { isMunicipalAdminAuthenticated } from '../reporting/MunicipalSecurityGate';
 
 interface WasteReportingHubProps {
   language: Language;
@@ -45,12 +46,14 @@ export default function WasteReportingHub({ language, initialSubTab = 'submit' }
     setReports(prev => [newReport, ...prev]);
   };
 
+  const isAuth = isMunicipalAdminAuthenticated();
+
   const navItems = [
     { id: 'submit', label: t.reportWaste?.submitTab || 'Report Waste', icon: Camera },
     { id: 'myReports', label: t.reportWaste?.myReportsTab || 'My Reports', icon: FileText, badge: reports.length },
     { id: 'rewards', label: t.reportWaste?.rewardsTab || 'Eco Rewards', icon: Gift },
     { id: 'leaderboard', label: t.reportWaste?.leaderboardTab || 'Leaderboard', icon: Trophy },
-    { id: 'admin', label: t.reportWaste?.adminTab || 'Municipal Admin', icon: Building2 },
+    { id: 'admin', label: t.reportWaste?.adminTab || 'Municipal Admin', icon: Building2, isSecure: true },
   ];
 
   return (
@@ -117,6 +120,14 @@ export default function WasteReportingHub({ language, initialSubTab = 'submit' }
                 <span className="relative z-10 flex items-center gap-2">
                   <Icon className="w-4 h-4" />
                   {item.label}
+                  {(item as any).isSecure && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono flex items-center gap-1 ${
+                      isActive ? 'bg-slate-950/80 text-emerald-300' : 'bg-slate-800/80 text-slate-400'
+                    }`}>
+                      <Lock className="w-2.5 h-2.5" />
+                      PIN
+                    </span>
+                  )}
                   {item.badge !== undefined && item.badge > 0 && (
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
                       isActive ? 'bg-slate-950 text-emerald-400' : 'bg-slate-800 text-slate-300'
